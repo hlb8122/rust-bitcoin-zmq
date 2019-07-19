@@ -21,7 +21,10 @@ impl Subscriber {
         let context = Arc::new(Context::new());
         let socket = Sub::builder(context).connect(addr).filter(b"").build();
 
+        // Broadcast queue
         let (incoming, outgoing) = multiqueue::broadcast_fut_queue(buffer);
+
+        // Connection future
         let connect = socket
             .map_err(SubscriptionError::from)
             .and_then(move |sub| {
@@ -29,18 +32,21 @@ impl Subscriber {
                     sub.stream()
                         .map_err(SubscriptionError::from)
                         .and_then(move |mut multipart| {
-                            let topic = multipart.pop_front().ok_or(BitcoinError::IncompleteMsg)?;
+                            // Parse multipart
+                            let raw_topic = multipart.pop_front().ok_or(BitcoinError::IncompleteMsg)?;
                             let payload =
                                 multipart.pop_front().ok_or(BitcoinError::IncompleteMsg)?;
-                            let classification = match &*topic {
+                            let topic = match &*raw_topic {
                                 b"rawtx" => Topic::RawTx,
                                 b"hashtx" => Topic::HashTx,
                                 b"rawblock" => Topic::RawBlock,
                                 b"hashblock" => Topic::HashBlock,
                                 _ => return Err(BitcoinError::IncompleteMsg.into()),
                             };
-                            Ok((classification, payload.to_vec()))
+                            Ok((topic, payload.to_vec()))
                         });
+                
+                // Forward messages to broadcast streams
                 incoming
                     .sink_map_err(|_| SubscriptionError::SendError)
                     .send_all(classify_stream).and_then(|_| Ok(()))
