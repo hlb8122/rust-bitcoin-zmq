@@ -1,6 +1,6 @@
 # Bitcoin ZMQ Wrapper
 
-This library provides a relatively thin wrapper around the Bitcoin ZMQ allowing you to receive a stream of hash, raw or deserialized transactions or blocks with ease.
+This library provides a relatively thin wrapper around the Bitcoin ZMQ, allowing you to receive from an asynchronous stream of transaction or block data.
 
 ## Requirements
 
