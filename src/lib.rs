@@ -33,7 +33,8 @@ impl Subscriber {
                         .map_err(SubscriptionError::from)
                         .and_then(move |mut multipart| {
                             // Parse multipart
-                            let raw_topic = multipart.pop_front().ok_or(BitcoinError::IncompleteMsg)?;
+                            let raw_topic =
+                                multipart.pop_front().ok_or(BitcoinError::IncompleteMsg)?;
                             let payload =
                                 multipart.pop_front().ok_or(BitcoinError::IncompleteMsg)?;
                             let topic = match &*raw_topic {
@@ -45,11 +46,12 @@ impl Subscriber {
                             };
                             Ok((topic, payload.to_vec()))
                         });
-                
+
                 // Forward messages to broadcast streams
                 incoming
                     .sink_map_err(|_| SubscriptionError::SendError)
-                    .send_all(classify_stream).and_then(|_| Ok(()))
+                    .send_all(classify_stream)
+                    .and_then(|_| Ok(()))
             });
 
         let connect = Box::new(connect);
