@@ -11,3 +11,6 @@ zmq = "*"
 bitcoin = "*"
 futures = "*"
 multiqueue = "*"
+
+[dev-dependencies]
+tokio = "*"
