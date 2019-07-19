@@ -1,0 +1,16 @@
+[package]
+name = "bitcoin-zmq"
+version = "0.1.0"
+authors = ["harry <hlbarber93@gmail.com>"]
+edition = "2018"
+
+
+[dependencies]
+futures-zmq = "*"
+zmq = "*"
+bitcoin = "*"
+futures = "*"
+multiqueue = "*"
+
+[dev-dependencies]
+tokio = "*"
