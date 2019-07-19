@@ -1,8 +1,8 @@
 use bitcoin_zmq::Subscriber;
-use futures::{Future, Stream};
+use futures::{Future, Stream, lazy};
 
 fn main() {
-    let subscriber = Subscriber::new("tcp://35.222.194.216:28332", 1024);
+    let subscriber = Subscriber::new("tcp://127.0.0.1:28332", 1024);
     let print_hashes = subscriber.subscribe_raw_tx().for_each(|hash| {
         println!("raw tx: {:?}", hash);
         Ok(())
@@ -12,7 +12,9 @@ fn main() {
         .connect()
         .map_err(|err| println!("err = {:?}", err));
 
-    let runner = connect.and_then(|_| print_hashes.map_err(|err| println!("err = {:?}", err)));
-
-    tokio::run(runner)
+    tokio::run(lazy(|| {
+        tokio::spawn(connect);
+        tokio::spawn(print_hashes);
+        Ok(())
+    }) )
 }
