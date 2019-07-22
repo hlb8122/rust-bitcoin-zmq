@@ -2,27 +2,37 @@ pub mod errors;
 
 use std::sync::Arc;
 
-use bitcoin::consensus::encode::Decodable;
-use bitcoin::{util::psbt::serialize::Deserialize, Block, Transaction};
+use bus_queue::async_::*;
 use futures::{Future, Sink, Stream};
 use futures_zmq::{prelude::*, Sub};
-use multiqueue::BroadcastFutReceiver;
 use zmq::Context;
 
 use errors::*;
 
-pub struct Subscriber {
-    connect: Box<Future<Item = (), Error = SubscriptionError> + Send>,
-    outgoing: BroadcastFutReceiver<(Topic, Vec<u8>)>,
+#[derive(Clone, PartialEq)]
+pub enum Topic {
+    RawTx,
+    HashTx,
+    RawBlock,
+    HashBlock,
 }
 
-impl Subscriber {
-    pub fn new(addr: &str, buffer: u64) -> Self {
+pub struct SubFactory(Subscriber<(Topic, Vec<u8>)>);
+
+impl SubFactory {
+    #[inline]
+    pub fn new(
+        addr: &str,
+        capacity: usize,
+    ) -> (
+        Self,
+        Box<Future<Item = (), Error = SubscriptionError> + Send>,
+    ) {
         let context = Arc::new(Context::new());
         let socket = Sub::builder(context).connect(addr).filter(b"").build();
 
-        // Broadcast queue
-        let (incoming, outgoing) = multiqueue::broadcast_fut_queue(buffer);
+        // Broadcast queues
+        let (broadcast_incoming, broadcast) = channel(capacity);
 
         // Connection future
         let connect = socket
@@ -33,120 +43,107 @@ impl Subscriber {
                         .map_err(SubscriptionError::from)
                         .and_then(move |mut multipart| {
                             // Parse multipart
-                            let raw_topic =
-                                multipart.pop_front().ok_or(BitcoinError::IncompleteMsg)?;
-                            let payload =
-                                multipart.pop_front().ok_or(BitcoinError::IncompleteMsg)?;
+                            let raw_topic = multipart
+                                .pop_front()
+                                .ok_or(SubscriptionError::IncompleteMsg)?;
+                            let payload = multipart
+                                .pop_front()
+                                .ok_or(SubscriptionError::IncompleteMsg)?;
                             let topic = match &*raw_topic {
                                 b"rawtx" => Topic::RawTx,
                                 b"hashtx" => Topic::HashTx,
                                 b"rawblock" => Topic::RawBlock,
                                 b"hashblock" => Topic::HashBlock,
-                                _ => return Err(BitcoinError::IncompleteMsg.into()),
+                                _ => return Err(SubscriptionError::IncompleteMsg),
                             };
                             Ok((topic, payload.to_vec()))
                         });
 
                 // Forward messages to broadcast streams
-                incoming
+                broadcast_incoming
                     .sink_map_err(|_| SubscriptionError::SendError)
                     .send_all(classify_stream)
                     .and_then(|_| Ok(()))
             });
 
-        let connect = Box::new(connect);
-        Subscriber { connect, outgoing }
+        let broker = Box::new(connect);
+        (SubFactory(broadcast), broker)
     }
 
-    pub fn connect(self) -> impl Future<Item = (), Error = SubscriptionError> {
-        self.connect
+    #[inline]
+    pub fn subscribe(&self, filter_topic: Topic) -> impl Stream<Item = Vec<u8>, Error = ()> {
+        self.0.clone().filter_map(move |ref arc_tuple| {
+            if arc_tuple.0 == filter_topic {
+                Some(arc_tuple.1.to_vec())
+            } else {
+                None
+            }
+        })
     }
 
-    pub fn subscribe_raw_tx(&self) -> impl Stream<Item = Vec<u8>, Error = ()> {
-        self.outgoing
-            .add_stream()
-            .filter_map(move |(topic, payload)| {
-                if topic == Topic::RawTx {
-                    Some(payload)
-                } else {
-                    None
-                }
-            })
+    #[inline]
+    pub fn subscribe_filtered<F, B>(
+        &self,
+        filter_topic: Topic,
+        filter_map: F,
+    ) -> impl Stream<Item = B, Error = ()>
+    where
+        F: FnMut(Vec<u8>) -> Option<B>,
+    {
+        self.subscribe(filter_topic).filter_map(filter_map)
     }
 
-    pub fn subscribe_hash_tx(&self) -> impl Stream<Item = Vec<u8>, Error = ()> {
-        self.outgoing
-            .add_stream()
-            .filter_map(move |(topic, payload)| {
-                if topic == Topic::HashTx {
-                    Some(payload)
-                } else {
-                    None
-                }
-            })
+    #[inline]
+    pub fn broadcast(
+        &self,
+        filter_topic: Topic,
+        capacity: usize,
+    ) -> (Subscriber<Vec<u8>>, impl Future<Item = (), Error = ()>) {
+        let stream = self.subscribe(filter_topic);
+        let (incoming, broadcast) = channel(capacity);
+        let broker = incoming
+            .sink_map_err(|_| ())
+            .send_all(stream)
+            .and_then(|_| Ok(()));
+        (broadcast, broker)
     }
 
-    pub fn subscribe_tx(&self) -> impl Stream<Item = Transaction, Error = SubscriptionError> {
-        self.outgoing
-            .add_stream()
-            .filter_map(move |(topic, payload)| {
-                if topic == Topic::Tx {
-                    Some(payload)
-                } else {
-                    None
-                }
-            })
-            .map_err(|_| SubscriptionError::SendError)
-            .and_then(move |raw_tx| Transaction::deserialize(&raw_tx).map_err(|err| err.into()))
-    }
-
-    pub fn subscribe_raw_block(&self) -> impl Stream<Item = Vec<u8>, Error = ()> {
-        self.outgoing
-            .add_stream()
-            .filter_map(move |(topic, payload)| {
-                if topic == Topic::RawBlock {
-                    Some(payload)
-                } else {
-                    None
-                }
-            })
-    }
-
-    pub fn subscribe_hash_block(&self) -> impl Stream<Item = Vec<u8>, Error = ()> {
-        self.outgoing
-            .add_stream()
-            .filter_map(move |(topic, payload)| {
-                if topic == Topic::HashBlock {
-                    Some(payload)
-                } else {
-                    None
-                }
-            })
-    }
-
-    pub fn subscribe_block(&self) -> impl Stream<Item = Block, Error = SubscriptionError> {
-        self.outgoing
-            .add_stream()
-            .filter_map(move |(topic, payload)| {
-                if topic == Topic::Block {
-                    Some(payload)
-                } else {
-                    None
-                }
-            })
-            .map_err(|_| SubscriptionError::SendError)
-            .and_then(move |raw_tx| {
-                Block::consensus_decode(&mut &raw_tx[..]).map_err(|err| err.into())
-            })
+    #[inline]
+    pub fn broadcast_filtered<B, F>(
+        &self,
+        filter_topic: Topic,
+        filter_map: F,
+        buffer: usize,
+    ) -> (Subscriber<B>, impl Future<Item = (), Error = ()>)
+    where
+        B: Clone + Send,
+        F: FnMut(Vec<u8>) -> Option<B>,
+    {
+        let stream = self.subscribe_filtered(filter_topic, filter_map);
+        let (incoming, broadcast) = channel(buffer);
+        let broker = incoming
+            .sink_map_err(|_| ())
+            .send_all(stream)
+            .and_then(|_| Ok(()));
+        (broadcast, broker)
     }
 }
 
-#[derive(Clone, PartialEq)]
-pub enum Topic {
-    RawTx,
-    HashTx,
-    Tx,
-    RawBlock,
-    HashBlock,
-    Block,
+#[inline]
+pub fn broadcast<B, F>(
+    stream: impl Stream<Item = (Topic, Vec<u8>), Error = ()>,
+    filter_map: F,
+    buffer: usize,
+) -> (Subscriber<B>, impl Future<Item = (), Error = ()>)
+where
+    B: Clone + Send,
+    F: FnMut((Topic, Vec<u8>)) -> Option<B>,
+{
+    let stream = stream.filter_map(filter_map);
+    let (incoming, broadcast) = channel(buffer);
+    let broker = incoming
+        .sink_map_err(|_| ())
+        .send_all(stream)
+        .and_then(|_| Ok(()));
+    (broadcast, broker)
 }

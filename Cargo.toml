@@ -4,13 +4,12 @@ version = "0.1.0"
 authors = ["harry <hlbarber93@gmail.com>"]
 edition = "2018"
 
-
 [dependencies]
 futures-zmq = "*"
 zmq = "*"
-bitcoin = "*"
 futures = "*"
-multiqueue = "*"
+bus_queue = "*"
 
 [dev-dependencies]
 tokio = "*"
+hex = "*"
