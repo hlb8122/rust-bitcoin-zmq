@@ -1,13 +1,14 @@
-use futures_zmq::Error as ZMQError;
 use std::sync::mpsc;
+
+use futures_zmq::Error as ZMQError;
+
 use super::Topic;
-// use bytes::Bytes;
 
 #[derive(Debug)]
 pub enum BitcoinError {
     MissingTopic,
     MissingPayload,
-    UnexpectedTopic
+    UnexpectedTopic,
 }
 
 #[derive(Debug)]

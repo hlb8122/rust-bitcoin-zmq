@@ -44,12 +44,10 @@ impl SubFactory {
                         .map_err(SubscriptionError::from)
                         .and_then(move |mut multipart| {
                             // Parse multipart
-                            let raw_topic = multipart
-                                .pop_front()
-                                .ok_or(BitcoinError::MissingTopic)?;
-                            let payload = multipart
-                                .pop_front()
-                                .ok_or(BitcoinError::MissingPayload)?;
+                            let raw_topic =
+                                multipart.pop_front().ok_or(BitcoinError::MissingTopic)?;
+                            let payload =
+                                multipart.pop_front().ok_or(BitcoinError::MissingPayload)?;
                             let topic = match &*raw_topic {
                                 b"rawtx" => Topic::RawTx,
                                 b"hashtx" => Topic::HashTx,
@@ -62,7 +60,7 @@ impl SubFactory {
 
                 // Forward messages to broadcast channel
                 broadcast_incoming
-                    .sink_map_err(|e| SubscriptionError::Channel(e))
+                    .sink_map_err(SubscriptionError::Channel)
                     .send_all(classify_stream)
                     .and_then(|_| Ok(()))
             });
@@ -83,17 +81,16 @@ impl SubFactory {
         let socket = Sub::builder(context).connect(addr).filter(b"").build();
 
         // Connection future
-        let connect = socket
+        socket
             .map_err(SubscriptionError::from)
             .and_then(move |sub| {
                 future::ok(
                     sub.stream()
                         .map_err(SubscriptionError::from)
                         .and_then(move |mut multipart| {
-                            // Parse topic
-                            let raw_topic = multipart
-                                .pop_front()
-                                .ok_or(BitcoinError::MissingTopic)?;
+                            // Extract topic
+                            let raw_topic =
+                                multipart.pop_front().ok_or(BitcoinError::MissingTopic)?;
                             Ok((raw_topic, multipart))
                         })
                         .filter_map(move |(raw_topic, multipart)| {
@@ -106,16 +103,15 @@ impl SubFactory {
                                 _ => return None,
                             };
                             Some(multipart)
-                        }).and_then(move |mut multipart| {
-                            // Parse payload
-                            multipart
-                                .pop_front()
-                                .ok_or(BitcoinError::MissingPayload.into())
-                                .map(|payload| payload[..].to_vec())
+                        })
+                        .and_then(move |mut multipart| {
+                            // Extract payload
+                            let payload =
+                                multipart.pop_front().ok_or(BitcoinError::MissingPayload)?;
+                            Ok(payload[..].to_vec())
                         }),
                 )
-            });
-        connect
+            })
     }
 
     #[inline]
