@@ -9,6 +9,7 @@ futures-zmq = "*"
 zmq = "*"
 futures = "*"
 bus_queue = "*"
+bytes = "*"
 
 [dev-dependencies]
 tokio = "*"

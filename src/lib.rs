@@ -3,6 +3,7 @@ pub mod errors;
 use std::sync::Arc;
 
 use bus_queue::async_::*;
+use bytes::Bytes;
 use futures::{future, Future, Sink, Stream};
 use futures_zmq::{prelude::*, Sub};
 use zmq::Context;
@@ -17,7 +18,7 @@ pub enum Topic {
     HashBlock,
 }
 
-pub struct SubFactory(Subscriber<(Topic, Vec<u8>)>);
+pub struct SubFactory(Subscriber<(Topic, Bytes)>);
 
 impl SubFactory {
     #[inline]
@@ -55,7 +56,7 @@ impl SubFactory {
                                 b"hashblock" => Topic::HashBlock,
                                 _ => return Err(BitcoinError::UnexpectedTopic.into()),
                             };
-                            Ok((topic, payload[..].to_vec()))
+                            Ok((topic, Bytes::from(&payload[..])))
                         });
 
                 // Forward messages to broadcast channel
@@ -115,7 +116,7 @@ impl SubFactory {
     }
 
     #[inline]
-    pub fn subscribe(&self, filter_topic: Topic) -> impl Stream<Item = Vec<u8>, Error = ()> {
+    pub fn subscribe(&self, filter_topic: Topic) -> impl Stream<Item = Bytes, Error = ()> {
         self.0.clone().filter_map(move |arc_tuple| {
             if arc_tuple.0 == filter_topic {
                 Some(arc_tuple.1.clone())
