@@ -3,12 +3,12 @@ pub mod errors;
 use std::sync::Arc;
 
 use bus_queue::async_::*;
-use bytes::Bytes;
-use futures::{future, Future, Sink, Stream};
+pub use bytes::Bytes;
+use futures::{future, sync::mpsc, Future, Sink, Stream};
 use futures_zmq::{prelude::*, Sub};
 use zmq::Context;
 
-use errors::*;
+pub use errors::*;
 
 #[derive(Clone, PartialEq)]
 pub enum Topic {
@@ -18,9 +18,10 @@ pub enum Topic {
     HashBlock,
 }
 
-pub struct SubFactory(Subscriber<(Topic, Bytes)>);
+#[derive(Clone)]
+pub struct ZMQSubscriber(Subscriber<(Topic, Bytes)>);
 
-impl SubFactory {
+impl ZMQSubscriber {
     #[inline]
     pub fn new(
         addr: &str,
@@ -34,7 +35,7 @@ impl SubFactory {
         let socket = Sub::builder(context).connect(addr).filter(b"").build();
 
         // Broadcast channel
-        let (broadcast_incoming, broadcast) = channel(capacity);
+        let (broadcast_incoming, subscriber) = channel(capacity);
 
         // Connection future
         let broker = socket
@@ -61,33 +62,37 @@ impl SubFactory {
 
                 // Forward messages to broadcast channel
                 broadcast_incoming
-                    .sink_map_err(SubscriptionError::Channel)
+                    .sink_map_err(SubscriptionError::BroadcastChannel)
                     .send_all(classify_stream)
                     .and_then(|_| Ok(()))
             });
 
-        (SubFactory(broadcast), broker)
+        (ZMQSubscriber(subscriber), broker)
     }
 
     #[inline]
-    pub fn single_stream<S>(
+    pub fn single_stream(
         addr: &str,
         topic: Topic,
-    ) -> impl Future<
-        Item = impl Stream<Item = Vec<u8>, Error = SubscriptionError> + Send,
-        Error = SubscriptionError,
-    > + Send {
+        capacity: usize,
+    ) -> (
+        Box<Stream<Item = Vec<u8>, Error = ()> + Send>,
+        impl Future<Item = (), Error = SubscriptionError> + Send,
+    ) {
         // Setup socket
         let context = Arc::new(Context::new());
         let socket = Sub::builder(context).connect(addr).filter(b"").build();
 
+        // Stream channel
+        let (payload_in, payload_out) = mpsc::channel(capacity);
+
         // Connection future
-        socket
+        let broker = socket
             .map_err(SubscriptionError::from)
             .and_then(move |sub| {
                 future::ok(
                     sub.stream()
-                        .map_err(SubscriptionError::from)
+                        .map_err(SubscriptionError::Connection)
                         .and_then(move |mut multipart| {
                             // Extract topic
                             let raw_topic =
@@ -106,18 +111,30 @@ impl SubFactory {
                             Some(multipart)
                         })
                         .and_then(move |mut multipart| {
-                            // Extract payload
+                            // Forward stream
                             let payload =
                                 multipart.pop_front().ok_or(BitcoinError::MissingPayload)?;
                             Ok(payload[..].to_vec())
                         }),
                 )
             })
+            .and_then(|stream| {
+                // Forward stream
+                payload_in
+                    .sink_map_err(|e| e.into())
+                    .send_all(stream)
+                    .and_then(|_| Ok(()))
+            });
+        (Box::new(payload_out), broker)
     }
 
+    /// Subscribe
     #[inline]
-    pub fn subscribe(&self, filter_topic: Topic) -> impl Stream<Item = Bytes, Error = ()> {
-        self.0.clone().filter_map(move |arc_tuple| {
+    pub fn subscribe(
+        self,
+        filter_topic: Topic,
+    ) -> impl Stream<Item = Bytes, Error = ()> + Send + Sized {
+        self.0.filter_map(move |arc_tuple| {
             if arc_tuple.0 == filter_topic {
                 Some(arc_tuple.1.clone())
             } else {
