@@ -1,6 +1,6 @@
-# Bitcoin ZMQ Wrapper
+# Bitcoin ZMQ Rust
 
-This library provides a relatively thin wrapper around the Bitcoin ZMQ, allowing you to receive from an asynchronous stream of transaction or block data.
+A library providing a relatively thin wrapper around Bitcoin ZMQ, allowing the construction of asynchronous streams of transaction or block data.
 
 ## Requirements
 
