@@ -4,7 +4,11 @@ version = "0.1.0"
 authors = ["Harry L. Barber <hlbarber93@gmail.com>"]
 edition = "2018"
 license = "MIT"
-
+description = """
+A library providing a relatively thin wrapper around Bitcoin ZMQ, 
+allowing the construction of asynchronous streams of transaction 
+or block data.
+"""
 
 [dependencies]
 futures-zmq = "0.5.0"
