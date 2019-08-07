@@ -7,12 +7,12 @@ license = "MIT"
 
 
 [dependencies]
-futures-zmq = "*"
-zmq = "*"
-futures = "*"
-bus_queue = "*"
-bytes = "*"
+futures-zmq = "0.5.0"
+zmq = "0.9.1"
+futures = "0.1.28"
+bus_queue = "0.4.1"
+bytes = "0.4.12"
 
 [dev-dependencies]
-tokio = "*"
-hex = "*"
+tokio = "0.1.22"
+hex = "0.3.2"
