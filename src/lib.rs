@@ -1,3 +1,9 @@
+//! # Bitcoin ZMQ
+//!
+//! A library providing a relatively thin wrapper around Bitcoin ZMQ,
+//! allowing the construction of asynchronous streams of transaction
+//! or block data.
+
 pub mod errors;
 
 use std::sync::Arc;
@@ -10,18 +16,29 @@ use zmq::Context;
 
 pub use errors::*;
 
+/// Topics provided by the bitcoind ZMQ
 #[derive(Clone, PartialEq)]
 pub enum Topic {
+    /// Raw transaction topic
     RawTx,
+    /// Transaction hash topic
     HashTx,
+    /// Raw block topic
     RawBlock,
+    /// Block hash topic
     HashBlock,
 }
 
+/// Factory object allowing constuction of single stream channels and
+/// broadcast channels.
+///
+/// Cloning to receive additional factories does not increase overhead
+/// when compared to using the subscribe method.
 #[derive(Clone)]
 pub struct ZMQSubscriber(Subscriber<(Topic, Bytes)>);
 
 impl ZMQSubscriber {
+    /// Constructs a new factory paired with a future representing the connection.
     #[inline]
     pub fn new(
         addr: &str,
@@ -70,6 +87,9 @@ impl ZMQSubscriber {
         (ZMQSubscriber(subscriber), broker)
     }
 
+    /// Construct a single stream filtered by topic.
+    ///
+    /// The stream is paired with a future representing the connection.
     #[inline]
     pub fn single_stream(
         addr: &str,
@@ -128,7 +148,15 @@ impl ZMQSubscriber {
         (Box::new(payload_out), broker)
     }
 
-    /// Subscribe
+    /// Subscribe to one-of-many streams filtered by topic.
+    ///
+    /// The stream is paired with a future representing the connection
+    /// and the broker coordinating the broadcast channel.
+    ///
+    /// The return type is Bytes which prevents unecessary clones while
+    /// streams are being handled by the broker.
+    ///
+    /// This does not consume the factory.
     #[inline]
     pub fn subscribe(
         self,

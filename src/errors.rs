@@ -6,18 +6,27 @@ use futures_zmq::Error as ZMQError;
 
 use super::Topic;
 
+/// Errors caused by bitcoind
 #[derive(Debug)]
 pub enum BitcoinError {
+    /// Topic is missing
     MissingTopic,
+    /// Payload is missing
     MissingPayload,
+    /// Unexpected topic
     UnexpectedTopic,
 }
 
+/// Primary error type concerning the ZMQ subscription
 #[derive(Debug)]
 pub enum SubscriptionError {
+    /// Error originating from bitcoind
     Bitcoin(BitcoinError),
+    /// Error sending over the broadcast channel
     BroadcastChannel(mpsc::SendError<(Topic, Bytes)>),
+    /// Error sending over single stream channel
     Channel(fmpsc::SendError<Vec<u8>>),
+    /// Error in the connection to bitcoind
     Connection(ZMQError),
 }
 
