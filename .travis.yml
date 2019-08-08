@@ -1,0 +1,15 @@
+dist: bionic
+language: rust
+rust:
+  - stable
+
+cache: cargo
+before_install:
+  - sudo apt update
+  - sudo apt install -y pkg-config libzmq3-dev
+
+jobs:
+  include:
+  - stage: build
+    script:
+      cargo build --verbose
