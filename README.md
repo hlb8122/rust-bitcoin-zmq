@@ -1,4 +1,4 @@
-# Bitcoin ZMQ Rust
+# Rust Bitcoin ZMQ
 
 [![Build Status](https://travis-ci.org/hlb8122/rust-bitcoin-zmq.svg?branch=master)](https://travis-ci.org/hlb8122/rust-bitcoin-zmq)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

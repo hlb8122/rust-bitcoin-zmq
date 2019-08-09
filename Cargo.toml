@@ -4,11 +4,19 @@ version = "0.1.0"
 authors = ["Harry L. Barber <hlbarber93@gmail.com>"]
 edition = "2018"
 license = "MIT"
+homepage = "https://github.com/hlb8122/rust-bitcoin-zmq"
+repository = "https://github.com/hlb8122/rust-bitcoin-zmq"
 description = """
 A library providing a relatively thin wrapper around Bitcoin ZMQ, 
 allowing the construction of asynchronous streams of transaction 
 or block data.
 """
+keywords = ["bitcoin", "zmq", "non-blocking", "stream"]
+categories = ["asynchronous", "concurrency", "cryptography::cryptocurrencies"]
+exclude = ["/.travis.yml"]
+
+[badges]
+travis-ci = { repository = "hlb8122/rust-bitcoin-zmq" }
 
 [dependencies]
 futures-zmq = "0.5.0"
