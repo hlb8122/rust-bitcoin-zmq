@@ -1,6 +1,6 @@
 [package]
 name = "bitcoin-zmq"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Harry L. Barber <hlbarber93@gmail.com>"]
 edition = "2018"
 license = "MIT"
