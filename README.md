@@ -3,6 +3,8 @@
 [![Build Status](https://travis-ci.org/hlb8122/rust-bitcoin-zmq.svg?branch=master)](https://travis-ci.org/hlb8122/rust-bitcoin-zmq)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Cargo](https://img.shields.io/crates/v/bitcoin-zmq.svg)](https://crates.io/crates/bitcoin-zmq)
+[![Documentation](https://docs.rs/bitcoin-zmq/badge.svg)](
+https://docs.rs/bitcoin-zmq)
 
 This crate provides a relatively thin wrapper around Bitcoin ZMQ, allowing for the construction of asynchronous streams of transaction or block data.
 
