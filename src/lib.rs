@@ -38,7 +38,7 @@ pub enum Topic {
 pub struct ZMQSubscriber(Subscriber<(Topic, Bytes)>);
 
 impl ZMQSubscriber {
-    /// Constructs a new factory paired with a future representing the connection.
+    /// Constructs a new factory paired with a future representing the connection/broker.
     #[inline]
     pub fn new(
         addr: &str,
@@ -96,7 +96,7 @@ impl ZMQSubscriber {
         topic: Topic,
         capacity: usize,
     ) -> (
-        Box<Stream<Item = Vec<u8>, Error = ()> + Send>,
+        Box<dyn Stream<Item = Vec<u8>, Error = ()> + Send>,
         impl Future<Item = (), Error = SubscriptionError> + Send,
     ) {
         // Setup socket
@@ -159,10 +159,10 @@ impl ZMQSubscriber {
     /// This does not consume the factory.
     #[inline]
     pub fn subscribe(
-        self,
+        &self,
         filter_topic: Topic,
     ) -> impl Stream<Item = Bytes, Error = ()> + Send + Sized {
-        self.0.filter_map(move |arc_tuple| {
+        self.0.clone().filter_map(move |arc_tuple| {
             if arc_tuple.0 == filter_topic {
                 Some(arc_tuple.1.clone())
             } else {
