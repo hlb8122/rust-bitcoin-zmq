@@ -1,7 +1,7 @@
-use futures::sync::mpsc as fmpsc;
-use std::sync::mpsc;
+use std::{fmt, sync::mpsc};
 
 use bytes::Bytes;
+use futures::sync::mpsc as fmpsc;
 use futures_zmq::Error as ZMQError;
 
 use super::Topic;
@@ -17,6 +17,17 @@ pub enum BitcoinError {
     UnexpectedTopic,
 }
 
+impl fmt::Display for BitcoinError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let printable = match self {
+            BitcoinError::MissingTopic => "missing topic",
+            BitcoinError::MissingPayload => "missing payload",
+            BitcoinError::UnexpectedTopic => "unexpected topic",
+        };
+        write!(f, "{}", printable)
+    }
+}
+
 /// Primary error type concerning the ZMQ subscription
 #[derive(Debug)]
 pub enum SubscriptionError {
@@ -28,6 +39,17 @@ pub enum SubscriptionError {
     Channel(fmpsc::SendError<Vec<u8>>),
     /// Error in the connection to bitcoind
     Connection(ZMQError),
+}
+
+impl fmt::Display for SubscriptionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SubscriptionError::Bitcoin(err) => err.fmt(f),
+            SubscriptionError::BroadcastChannel(err) => err.fmt(f),
+            SubscriptionError::Channel(err) => err.fmt(f),
+            SubscriptionError::Connection(err) => err.fmt(f),
+        }
+    }
 }
 
 impl From<BitcoinError> for SubscriptionError {
