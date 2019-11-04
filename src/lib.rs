@@ -31,13 +31,13 @@ pub enum Topic {
     HashBlock,
 }
 
-/// An object representing the ZMQ stream connected to a remote endpoint.
+/// An object representing the ZMQ subscription to a remote endpoint.
 pub struct ZMQListener {
     subscriber: Sub,
 }
 
 impl ZMQListener {
-    /// Creates a new ZmqListener which will be bound to the specified address.
+    /// Creates a new ZMQListener which will be bound to the specified address.
     ///
     /// The returned listener is ready to accept messages once the future resolves.
     pub async fn bind(addr: &str) -> Result<Self, ZMQError> {
@@ -64,7 +64,7 @@ impl ZMQListener {
 
     /// Listen to stream of ZMQ messages from bitcoind.
     ///
-    /// Stream items are a paired with their associated topic.
+    /// Stream messages are a paired with their associated topic.
     pub fn stream_classified(
         self,
     ) -> impl Stream<Item = Result<(Topic, Vec<u8>), SubscriptionError>> {
