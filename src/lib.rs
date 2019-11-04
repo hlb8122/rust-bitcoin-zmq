@@ -8,9 +8,11 @@ pub mod errors;
 
 use std::sync::Arc;
 
-use bus_queue::async_::*;
-pub use bytes::Bytes;
-use futures::{future, sync::mpsc, Future, Sink, Stream};
+use futures::{
+    compat::{Future01CompatExt, Stream01CompatExt},
+    prelude::*,
+};
+pub use futures_zmq::Error as ZMQError;
 use futures_zmq::{prelude::*, Sub};
 use zmq::Context;
 
@@ -29,145 +31,58 @@ pub enum Topic {
     HashBlock,
 }
 
-/// Factory object allowing constuction of single stream channels and
-/// broadcast channels.
-///
-/// Cloning to receive additional factories does not increase overhead
-/// when compared to using the subscribe method.
-#[derive(Clone)]
-pub struct ZMQSubscriber(Subscriber<(Topic, Bytes)>);
+/// An object representing the ZMQ subscription to a remote endpoint.
+pub struct ZMQListener {
+    subscriber: Sub,
+}
 
-impl ZMQSubscriber {
-    /// Constructs a new factory paired with a future representing the connection/broker.
-    #[inline]
-    pub fn new(
-        addr: &str,
-        capacity: usize,
-    ) -> (
-        Self,
-        impl Future<Item = (), Error = SubscriptionError> + Send,
-    ) {
+impl ZMQListener {
+    /// Creates a new ZMQListener which will be bound to the specified address.
+    ///
+    /// The returned listener is ready to accept messages once the future resolves.
+    pub async fn bind(addr: &str) -> Result<Self, ZMQError> {
         // Setup socket
         let context = Arc::new(Context::new());
-        let socket = Sub::builder(context).connect(addr).filter(b"").build();
-
-        // Broadcast channel
-        let (broadcast_incoming, subscriber) = channel(capacity);
-
-        // Connection future
-        let broker = socket
-            .map_err(SubscriptionError::from)
-            .and_then(move |sub| {
-                let classify_stream =
-                    sub.stream()
-                        .map_err(SubscriptionError::from)
-                        .and_then(move |mut multipart| {
-                            // Parse multipart
-                            let raw_topic =
-                                multipart.pop_front().ok_or(BitcoinError::MissingTopic)?;
-                            let payload =
-                                multipart.pop_front().ok_or(BitcoinError::MissingPayload)?;
-                            let topic = match &*raw_topic {
-                                b"rawtx" => Topic::RawTx,
-                                b"hashtx" => Topic::HashTx,
-                                b"rawblock" => Topic::RawBlock,
-                                b"hashblock" => Topic::HashBlock,
-                                _ => return Err(BitcoinError::UnexpectedTopic.into()),
-                            };
-                            Ok((topic, Bytes::from(&payload[..])))
-                        });
-
-                // Forward messages to broadcast channel
-                broadcast_incoming
-                    .sink_map_err(SubscriptionError::BroadcastChannel)
-                    .send_all(classify_stream)
-                    .and_then(|_| Ok(()))
-            });
-
-        (ZMQSubscriber(subscriber), broker)
+        let sub_old = Sub::builder(context).connect(addr).filter(b"").build();
+        let subscriber = sub_old.compat().await?; // Convert from futures 0.1 to 0.3
+        let listener = ZMQListener { subscriber };
+        Ok(listener)
     }
 
-    /// Construct a single stream filtered by topic.
-    ///
-    /// The stream is paired with a future representing the connection.
-    #[inline]
-    pub fn single_stream(
-        addr: &str,
-        topic: Topic,
-        capacity: usize,
-    ) -> (
-        Box<dyn Stream<Item = Vec<u8>, Error = ()> + Send>,
-        impl Future<Item = (), Error = SubscriptionError> + Send,
-    ) {
-        // Setup socket
-        let context = Arc::new(Context::new());
-        let socket = Sub::builder(context).connect(addr).filter(b"").build();
+    /// Listen to stream of ZMQ messages from bitcoind.
+    pub fn stream(self) -> impl Stream<Item = Result<Vec<u8>, SubscriptionError>> {
+        let stream = self.subscriber.stream().compat().map(move |multipart_res| {
+            // Parse multipart
+            let mut multipart = multipart_res?;
+            multipart.pop_front().ok_or(BitcoinError::MissingTopic)?;
+            let payload = multipart.pop_front().ok_or(BitcoinError::MissingPayload)?;
+            Ok(payload.to_vec())
+        });
 
-        // Stream channel
-        let (payload_in, payload_out) = mpsc::channel(capacity);
-
-        // Connection future
-        let broker = socket
-            .map_err(SubscriptionError::from)
-            .and_then(move |sub| {
-                future::ok(
-                    sub.stream()
-                        .map_err(SubscriptionError::Connection)
-                        .and_then(move |mut multipart| {
-                            // Extract topic
-                            let raw_topic =
-                                multipart.pop_front().ok_or(BitcoinError::MissingTopic)?;
-                            Ok((raw_topic, multipart))
-                        })
-                        .filter_map(move |(raw_topic, multipart)| {
-                            // Filter by topic
-                            match (&*raw_topic, &topic) {
-                                (b"rawtx", Topic::RawTx) => (),
-                                (b"hashtx", Topic::HashTx) => (),
-                                (b"rawblock", Topic::RawBlock) => (),
-                                (b"hashblock", Topic::HashBlock) => (),
-                                _ => return None,
-                            };
-                            Some(multipart)
-                        })
-                        .and_then(move |mut multipart| {
-                            // Forward stream
-                            let payload =
-                                multipart.pop_front().ok_or(BitcoinError::MissingPayload)?;
-                            Ok(payload[..].to_vec())
-                        }),
-                )
-            })
-            .and_then(|stream| {
-                // Forward stream
-                payload_in
-                    .sink_map_err(|e| e.into())
-                    .send_all(stream)
-                    .and_then(|_| Ok(()))
-            });
-        (Box::new(payload_out), broker)
+        Box::pin(stream)
     }
 
-    /// Subscribe to one-of-many streams filtered by topic.
+    /// Listen to stream of ZMQ messages from bitcoind.
     ///
-    /// The stream is paired with a future representing the connection
-    /// and the broker coordinating the broadcast channel.
-    ///
-    /// The return type is Bytes which prevents unecessary clones while
-    /// streams are being handled by the broker.
-    ///
-    /// This does not consume the factory.
-    #[inline]
-    pub fn subscribe(
-        &self,
-        filter_topic: Topic,
-    ) -> impl Stream<Item = Bytes, Error = ()> + Send + Sized {
-        self.0.clone().filter_map(move |arc_tuple| {
-            if arc_tuple.0 == filter_topic {
-                Some(arc_tuple.1.clone())
-            } else {
-                None
-            }
-        })
+    /// Stream messages are a paired with their associated topic.
+    pub fn stream_classified(
+        self,
+    ) -> impl Stream<Item = Result<(Topic, Vec<u8>), SubscriptionError>> {
+        let stream = self.subscriber.stream().compat().map(move |multipart_res| {
+            // Parse multipart
+            let mut multipart = multipart_res?;
+            let raw_topic = multipart.pop_front().ok_or(BitcoinError::MissingTopic)?;
+            let payload = multipart.pop_front().ok_or(BitcoinError::MissingPayload)?;
+            let topic = match &*raw_topic {
+                b"rawtx" => Topic::RawTx,
+                b"hashtx" => Topic::HashTx,
+                b"rawblock" => Topic::RawBlock,
+                b"hashblock" => Topic::HashBlock,
+                _ => return Err(BitcoinError::UnexpectedTopic.into()),
+            };
+            Ok((topic, payload.to_vec()))
+        });
+
+        Box::pin(stream)
     }
 }

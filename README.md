@@ -17,26 +17,25 @@ sudo apt install pkg-config libzmq3-dev
 ## Usage
 
 ```rust
-use bitcoin_zmq::{Topic, ZMQSubscriber};
-use futures::{lazy, Future, Stream};
+use bitcoin_zmq::ZMQListener;
+use futures::prelude::*;
 
-fn main() {
-    // Construct subscription factory and broker
-    let (factory, broker) = ZMQSubscriber::new("tcp://127.0.0.1:28332", 1024);
-    let broker = broker.map_err(|err| println!("err = {:?}", err));
+#[tokio::main]
+async fn main() {
+    // Construct ZMQ listenr
+    let listener = ZMQListener::bind("tcp://127.0.0.1:28332")
+        .await
+        .expect("could not connect");
 
-    // Do something with stream of raw txs
-    let print_txs = factory.subscribe(Topic::RawTx).for_each(|raw_tx| {
-        println!("raw tx: {:?}", hex::encode(raw_tx));
-        Ok(())
-    });
-
-    // Pass futures to Tokio's executor
-    tokio::run(lazy(|| {
-        tokio::spawn(broker);
-        tokio::spawn(print_txs);
-        Ok(())
-    }))
+    // Do something with stream of messages
+    listener
+        .stream()
+        .take(10)
+        .try_for_each(move |raw| {
+            println!("raw message: {:?}", hex::encode(raw));
+            future::ok(())
+        })
+        .await
+        .expect("zmq error'd during stream");
 }
-
 ```
