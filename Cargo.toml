@@ -1,7 +1,7 @@
 [package]
 name = "bitcoin-zmq"
-version = "0.2.0-alpha"
-authors = ["Harry L. Barber <hlbarber93@gmail.com>"]
+version = "0.2.0-alpha.0"
+authors = ["Harry Barber <harrybarber@protonmail.com>"]
 edition = "2018"
 license = "MIT"
 homepage = "https://github.com/hlb8122/rust-bitcoin-zmq"
