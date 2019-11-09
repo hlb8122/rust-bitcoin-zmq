@@ -1,6 +1,6 @@
 use std::fmt;
 
-use futures_zmq::Error as ZMQError;
+pub use futures_zmq::Error as ZMQError;
 
 /// Errors caused by bitcoind
 #[derive(Debug)]

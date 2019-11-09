@@ -1,6 +1,6 @@
 [package]
 name = "bitcoin-zmq"
-version = "0.2.0-alpha.0"
+version = "0.2.0-alpha.1"
 authors = ["Harry Barber <harrybarber@protonmail.com>"]
 edition = "2018"
 license = "MIT"
@@ -19,7 +19,7 @@ exclude = ["/.travis.yml"]
 travis-ci = { repository = "hlb8122/rust-bitcoin-zmq" }
 
 [dependencies]
-futures-preview = { version = "=0.3.0-alpha.19", features = ["compat"] }
+futures = { version = "0.3.1", features = ["compat"] }
 futures-zmq = "0.5.0"
 zmq = "0.9.1"
 

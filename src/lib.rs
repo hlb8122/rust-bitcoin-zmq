@@ -12,7 +12,6 @@ use futures::{
     compat::{Future01CompatExt, Stream01CompatExt},
     prelude::*,
 };
-pub use futures_zmq::Error as ZMQError;
 use futures_zmq::{prelude::*, Sub};
 use zmq::Context;
 
