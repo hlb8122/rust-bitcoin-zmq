@@ -24,5 +24,5 @@ futures-zmq = "0.5.0"
 zmq = "0.9.1"
 
 [dev-dependencies]
-hex = "0.3.2"
+hex = "0.4.0"
 tokio = "0.2.0-alpha.6"
